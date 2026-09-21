@@ -1,0 +1,22 @@
+# Conservative initial thresholds for propeller-off field acceptance.
+vision_topic: /mavros/vision_pose/pose
+local_topic: /mavros/local_position/pose
+pose_topic: /mavros/local_position/pose
+
+# FAST-LIVO publishes at a nominal 10 Hz. Keep 5% scheduling tolerance so a
+# measured 9.999 Hz stream is not rejected solely by timer quantization.
+minimum_rate_hz: 9.5
+maximum_latency_s: 0.15
+maximum_quaternion_norm_error: 0.02
+maximum_jump_m: 0.25
+maximum_stationary_drift_m: 0.10
+
+maximum_sync_offset_s: 0.08
+maximum_position_error_m: 0.20
+maximum_yaw_error_deg: 10.0
+
+baseline_seconds: 3.0
+motion_seconds: 10.0
+distance_tolerance: 0.15
+cross_axis_tolerance: 0.10
+yaw_tolerance_deg: 15.0

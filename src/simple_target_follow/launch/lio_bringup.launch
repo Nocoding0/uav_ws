@@ -1,0 +1,63 @@
+<launch>
+  <!-- Minimal localization stack. No camera, Xsens, task, setpoint, mode, or arming commands. -->
+  <arg name="start_livox" default="true" />
+  <arg name="start_mavros" default="false" />
+  <arg name="publish_to_mavros" default="false" />
+  <arg name="fcu_url"
+       default="/dev/serial/by-id/usb-3D_Robotics_PX4_FMU_v5.x_0-if00:57600" />
+  <arg name="raw_pose_topic" default="/fast_livo/unconverted_vision_pose" />
+  <arg name="vision_pose_topic" default="/mavros/vision_pose/pose" />
+
+  <include if="$(arg start_livox)"
+           file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch">
+    <arg name="rviz_enable" value="false" />
+    <arg name="rosbag_enable" value="false" />
+  </include>
+
+  <!-- Keep the proven Mid-360 built-in IMU baseline. The upstream filename is
+       historical: common/imu_topic is /livox/imu, not the MTi-680 topic. -->
+  <rosparam command="load"
+            file="$(find fast_livo)/config/seu/mid360_mti680.yaml" />
+  <rosparam param="extrin_calib/extrinsic_T">[0.0, 0.0, 0.0]</rosparam>
+  <rosparam param="extrin_calib/extrinsic_R">[1.0, 0.0, 0.0,
+                                              0.0, 1.0, 0.0,
+                                              0.0, 0.0, 1.0]</rosparam>
+  <param name="common/img_en" type="int" value="0" />
+  <param name="pcd_save/pcd_save_en" value="false" />
+  <param name="evo/pose_output_en" value="false" />
+  <param name="publish/dense_map_en" value="false" />
+  <param name="local_map/map_sliding_en" value="true" />
+  <param name="local_map/half_map_size" value="10.0" />
+
+  <node pkg="fast_livo"
+        type="fastlivo_mapping"
+        name="laserMapping"
+        output="screen"
+        required="true">
+    <!-- This fork loads a camera model even when img_en=0. Keep the calibrated
+         file available, but no image subscriber data is required in LIO mode. -->
+    <rosparam command="load" file="$(find fast_livo)/config/seu/d435i.yaml" />
+    <remap from="/mavros/vision_pose/pose" to="$(arg raw_pose_topic)" />
+  </node>
+
+  <include if="$(arg start_mavros)"
+           file="$(find simple_target_follow)/launch/hardware_bringup.launch">
+    <arg name="fcu_url" value="$(arg fcu_url)" />
+    <arg name="use_health_monitor" value="true" />
+    <arg name="require_battery" value="false" />
+  </include>
+
+  <node if="$(arg publish_to_mavros)"
+        pkg="simple_target_follow"
+        type="fast_livo_pose_bridge.py"
+        name="fast_livo_pose_bridge"
+        output="screen"
+        required="true">
+    <param name="input_topic" value="$(arg raw_pose_topic)" />
+    <param name="output_topic" value="$(arg vision_pose_topic)" />
+    <param name="expected_input_frame" value="camera_init" />
+    <param name="output_frame" value="map" />
+    <param name="warmup_samples" value="10" />
+    <param name="maximum_age_s" value="0.25" />
+  </node>
+</launch>

@@ -1,0 +1,47 @@
+# Forward-looking RealSense tracking for the D-problem cross/ring target.
+takeoff_height: 1.50
+hover_duration: 3.0
+takeoff_speed: 0.30
+setpoint_rate: 20.0
+position_tolerance: 0.10
+settle_time: 1.5
+preflight_timeout: 60.0
+command_timeout: 30.0
+telemetry_max_age: 1.0
+state_max_age: 3.0
+pose_max_age: 0.5
+
+tracking_enabled: true
+tracking_duration: 30.0
+tracking_mode: follow
+follow_confirm_time: 1.0
+camera_orientation: forward
+camera_yaw_offset_deg: 0.0
+desired_center_x: 0.50
+desired_center_y: 0.50
+image_topic: /camera/color/image_raw
+annotated_topic: /vehicle_marker/image
+marker_timeout: 0.60
+search_delay: 2.0
+search_yaw_rate_deg: 12.0
+
+# Tune these with props removed and recorded images before flight.
+desired_marker_size: 0.22
+forward_gain: 1.2
+lateral_gain: 0.8
+max_tracking_speed: 0.25
+align_yaw_to_motion: true
+maximum_tracking_yaw_rate_deg: 25.0
+max_tracking_radius: 3.5
+return_speed: 0.25
+minimum_marker_area: 120.0
+minimum_marker_size: 0.080
+maximum_marker_size: 0.70
+# The complete pattern is preferred, but the cross or either identifiable ring
+# can independently reacquire the target.
+marker_color: black
+marker_confirm_frames: 5
+marker_miss_tolerance_frames: 3
+marker_filter_alpha: 0.35
+maximum_center_jump: 0.18
+maximum_size_jump: 0.12

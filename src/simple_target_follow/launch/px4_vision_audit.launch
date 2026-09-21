@@ -1,0 +1,10 @@
+<launch>
+  <!-- Read-only: reports topics, estimator status, and known EKF2 parameters. -->
+  <arg name="duration" default="8.0" />
+  <node pkg="simple_target_follow"
+        type="px4_vision_audit.py"
+        name="px4_vision_audit"
+        output="screen">
+    <param name="duration" value="$(arg duration)" />
+  </node>
+</launch>

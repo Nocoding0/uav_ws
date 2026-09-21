@@ -1,0 +1,23 @@
+# Verified on the local MTi-680-8A1G6 (device ID 0080003041).
+# Select by the device's own ID. The driver does not recognize a Linux
+# /dev/serial/by-id symlink as an MTi port, while device-ID scanning is stable.
+device_id: '0080003041'
+frame_id: imu_link
+publisher_queue_size: 10
+
+pub_imu: true
+pub_quaternion: true
+pub_mag: true
+pub_angular_velocity: true
+pub_acceleration: true
+pub_free_acceleration: true
+pub_dq: true
+pub_dv: true
+pub_sampletime: true
+pub_temperature: true
+pub_pressure: true
+pub_gnss: true
+pub_twist: true
+pub_transform: true
+pub_positionLLA: true
+pub_velocity: true

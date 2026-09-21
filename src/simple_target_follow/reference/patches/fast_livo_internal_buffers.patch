@@ -1,0 +1,40 @@
+diff --git a/src/LIVMapper.cpp b/src/LIVMapper.cpp
+--- a/src/LIVMapper.cpp
++++ b/src/LIVMapper.cpp
+@@ -976,6 +976,11 @@ void LIVMapper::img_cbk(const sensor_msgs::Image::ConstPtr &msg)
+   cv::Mat img_cur = getImageFromMsg(msg);
+   img_buffer.push_back(img_cur);
+   img_time_buffer.push_back(img_time_correct);
++  while (img_buffer.size() > 2)
++  {
++    img_buffer.pop_front();
++    img_time_buffer.pop_front();
++  }
+ 
+   // ROS_INFO("Correct Image time: %.6f", img_time_correct);
+ 
+@@ -1290,6 +1296,7 @@ void LIVMapper::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes,
+ {
+   if (pcl_w_wait_pub->empty()) return;
+   PointCloudXYZRGB::Ptr laserCloudWorldRGB(new PointCloudXYZRGB());
++  bool image_batch_complete = false;
+   if (img_en)//静态变量pub_num控制发布间隔，累积pub_scan_num次点云后处理
+   {
+     static int pub_num = 1;
+@@ -1298,6 +1305,7 @@ void LIVMapper::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes,
+     if(pub_num == pub_scan_num)
+     {
+       pub_num = 1;
++      image_batch_complete = true;
+       size_t size = pcl_wait_pub->points.size();//通过pcl_wait_pub临时存储多帧点云数据
+       laserCloudWorldRGB->reserve(size);
+       // double inv_expo = _state.inv_expo_time;
+@@ -1397,7 +1405,7 @@ void LIVMapper::publish_frame_world(const ros::Publisher &pubLaserCloudFullRes,
+       }
+     }
+   }
+-  if(laserCloudWorldRGB->size() > 0)  PointCloudXYZI().swap(*pcl_wait_pub); 
++  if(image_batch_complete) PointCloudXYZI().swap(*pcl_wait_pub);
+   PointCloudXYZI().swap(*pcl_w_wait_pub);
+ }
+ /*

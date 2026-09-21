@@ -1,0 +1,51 @@
+<launch>
+  <!-- Read-only, propeller-off field checks. No node in this file publishes
+       setpoints, changes PX4 mode, or requests arming. Run one check at a time. -->
+  <arg name="run_quality" default="true" />
+  <arg name="run_fusion" default="false" />
+  <arg name="run_axis" default="false" />
+  <arg name="duration" default="30.0" />
+  <arg name="require_local" default="true" />
+  <arg name="vision_topic" default="/mavros/vision_pose/pose" />
+  <arg name="pose_topic" default="/mavros/local_position/pose" />
+  <arg name="axis" default="x" />
+  <arg name="expected_distance" default="0.5" />
+  <arg name="baseline_seconds" default="3.0" />
+  <arg name="motion_seconds" default="10.0" />
+
+  <node if="$(arg run_quality)"
+        pkg="simple_target_follow"
+        type="localization_quality_test.py"
+        name="target_follow_localization_quality_test"
+        output="screen">
+    <rosparam command="load"
+              file="$(find simple_target_follow)/config/localization_validation.yaml" />
+    <param name="duration" value="$(arg duration)" />
+    <param name="require_local" value="$(arg require_local)" />
+    <param name="vision_topic" value="$(arg vision_topic)" />
+  </node>
+
+  <node if="$(arg run_fusion)"
+        pkg="simple_target_follow"
+        type="pose_fusion_test.py"
+        name="target_follow_pose_fusion_test"
+        output="screen">
+    <rosparam command="load"
+              file="$(find simple_target_follow)/config/localization_validation.yaml" />
+    <param name="duration" value="$(arg duration)" />
+  </node>
+
+  <node if="$(arg run_axis)"
+        pkg="simple_target_follow"
+        type="axis_motion_test.py"
+        name="target_follow_axis_motion_test"
+        output="screen">
+    <rosparam command="load"
+              file="$(find simple_target_follow)/config/localization_validation.yaml" />
+    <param name="pose_topic" value="$(arg pose_topic)" />
+    <param name="axis" value="$(arg axis)" />
+    <param name="expected_distance" value="$(arg expected_distance)" />
+    <param name="baseline_seconds" value="$(arg baseline_seconds)" />
+    <param name="motion_seconds" value="$(arg motion_seconds)" />
+  </node>
+</launch>

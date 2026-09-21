@@ -1,0 +1,12 @@
+# Simple vertical flight profile, relative to the post-arm local position.
+takeoff_height: 1.50
+hover_duration: 10.0
+takeoff_speed: 0.15
+setpoint_rate: 20.0
+position_tolerance: 0.10
+settle_time: 1.5
+preflight_timeout: 60.0
+command_timeout: 30.0
+telemetry_max_age: 1.0
+state_max_age: 3.0
+pose_max_age: 0.5

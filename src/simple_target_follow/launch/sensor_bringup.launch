@@ -1,0 +1,156 @@
+<launch>
+  <!-- Sensor-only bring-up. It does not start MAVROS or the flight mission. -->
+  <arg name="use_realsense" default="true" />
+  <arg name="realsense_serial" default="918512073667" />
+  <arg name="realsense_enable_depth" default="true" />
+  <arg name="realsense_enable_infra" default="true" />
+  <arg name="realsense_enable_imu" default="true" />
+  <arg name="realsense_align_depth" default="true" />
+  <arg name="color_width" default="640" />
+  <arg name="color_height" default="480" />
+  <arg name="color_fps" default="30" />
+  <arg name="depth_width" default="640" />
+  <arg name="depth_height" default="480" />
+  <arg name="depth_fps" default="30" />
+  <arg name="use_xsens" default="true" />
+  <arg name="use_livox" default="false" />
+  <arg name="use_fast_livo" default="false" />
+  <!-- Visual fusion is deliberately opt-in.  The upstream mapper uses a
+       200000-message image queue; LIO-only mode is the safe calibration
+       baseline on this companion computer. -->
+  <arg name="fast_livo_use_image" default="false" />
+  <arg name="fast_livo_image_rate" default="10.0" />
+  <!-- The guarded bridge is enabled only after the native Mid-360 pose axes
+       passed the propeller-off ENU translation and yaw tests. -->
+  <arg name="fast_livo_publish_mavros_pose" default="true" />
+  <!-- This installation uses the Mid-360's co-located built-in IMU from
+       /livox/imu.  Its native LiDAR-to-IMU transform was verified as identity
+       by static and manual-yaw tests on 2026-07-31.  The legacy
+       mid360_mti680 file contains a transform for a different IMU mounting;
+       it caused about 1.45 m of false translation during a 90-degree yaw. -->
+  <arg name="fast_livo_native_imu_extrinsics" default="true" />
+
+  <include if="$(arg use_realsense)"
+           file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <arg name="serial_no" value="$(arg realsense_serial)" />
+    <arg name="color_width" value="$(arg color_width)" />
+    <arg name="color_height" value="$(arg color_height)" />
+    <arg name="color_fps" value="$(arg color_fps)" />
+    <arg name="depth_width" value="$(arg depth_width)" />
+    <arg name="depth_height" value="$(arg depth_height)" />
+    <arg name="depth_fps" value="$(arg depth_fps)" />
+    <arg name="enable_color" value="true" />
+    <arg name="enable_depth" value="$(arg realsense_enable_depth)" />
+    <arg name="enable_infra1" value="$(arg realsense_enable_infra)" />
+    <arg name="enable_infra2" value="$(arg realsense_enable_infra)" />
+    <arg name="enable_accel" value="$(arg realsense_enable_imu)" />
+    <arg name="enable_gyro" value="$(arg realsense_enable_imu)" />
+    <arg name="unite_imu_method" value="linear_interpolation" />
+    <arg name="align_depth" value="$(arg realsense_align_depth)" />
+    <arg name="enable_pointcloud" value="false" />
+  </include>
+
+  <node if="$(arg use_xsens)"
+        pkg="xsens_mti_driver"
+        type="xsens_mti_node"
+        name="xsens_mti_node"
+        output="screen">
+    <rosparam command="load"
+              file="$(find simple_target_follow)/config/xsens_mti680.yaml" />
+  </node>
+
+  <include if="$(arg use_livox)"
+           file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360.launch">
+    <arg name="rviz_enable" value="false" />
+    <arg name="rosbag_enable" value="false" />
+  </include>
+
+  <!-- Keep the upstream direct publisher quarantined. A separate guarded
+       node checks the verified ENU pose before publishing it to MAVROS. -->
+  <group if="$(arg use_fast_livo)">
+    <!-- Do not include FAST-LIVO's mapping_mid360_mti680.launch here.  That
+         launch starts image_transport/republish with the same raw input and
+         output base topic.  With a D435i already publishing raw images this
+         creates a compressed->raw feedback loop; the 200000-message image
+         queue then grows until the kernel OOM killer terminates FAST-LIVO.
+
+         Load the verified sensor/extrinsic baseline directly and apply the
+         bounded runtime overrides before starting only the mapper node. -->
+    <rosparam command="load"
+              file="$(find fast_livo)/config/seu/mid360_mti680.yaml" />
+    <group if="$(arg fast_livo_native_imu_extrinsics)">
+      <rosparam param="extrin_calib/extrinsic_T">[0.0, 0.0, 0.0]</rosparam>
+      <rosparam param="extrin_calib/extrinsic_R">[1.0, 0.0, 0.0,
+                                                  0.0, 1.0, 0.0,
+                                                  0.0, 0.0, 1.0]</rosparam>
+    </group>
+    <param name="pcd_save/pcd_save_en" value="false" />
+    <param name="evo/pose_output_en" value="false" />
+    <param name="publish/dense_map_en" value="false" />
+    <param name="local_map/map_sliding_en" value="true" />
+    <param name="local_map/half_map_size" value="10.0" />
+    <!-- Upstream declares img_en as int, not bool.  Preserve that exact XML-RPC
+         type or ros::NodeHandle::param<int> silently falls back to its default
+         value of 1 and the mapper waits forever for an image. -->
+    <param name="common/img_en"
+           type="int"
+           value="$(eval 1 if arg('fast_livo_use_image') else 0)" />
+    <param name="common/img_topic"
+           value="/fast_livo/camera/color/image_raw" />
+
+    <!-- The mapper's image subscriber queue is hard-coded to 200000.  On this
+         four-core companion computer it processes fewer frames than the D435i
+         supplies at 30 Hz, so the raw-image backlog alone can consume all RAM.
+         Throttle only the mapper input; the original 30 Hz camera topic stays
+         available to the detector and ground station. -->
+    <node pkg="topic_tools"
+          type="throttle"
+          name="fast_livo_image_throttle"
+          if="$(arg fast_livo_use_image)"
+          args="messages /camera/color/image_raw $(arg fast_livo_image_rate) /fast_livo/camera/color/image_raw"
+          output="log" />
+
+    <node pkg="fast_livo"
+          type="fastlivo_mapping"
+          name="laserMapping"
+          output="log">
+      <rosparam command="load"
+                file="$(find fast_livo)/config/seu/d435i.yaml" />
+      <remap from="/mavros/vision_pose/pose"
+             to="/fast_livo/unconverted_vision_pose" />
+    </node>
+
+    <!-- On 2026-07-31 this exact installation passed +X forward, +Y left,
+         +Z up, and +yaw counter-clockwise tests with the native identity
+         extrinsics. MAVROS accepts ROS ENU/FLU PoseStamped input and handles
+         the FCU-side conversion. Keep the numeric pose unchanged, but close
+         the output on stale data, invalid quaternions, or estimator jumps. -->
+    <group if="$(arg fast_livo_native_imu_extrinsics)">
+      <node if="$(arg fast_livo_publish_mavros_pose)"
+            pkg="simple_target_follow"
+            type="fast_livo_pose_bridge.py"
+            name="fast_livo_pose_bridge"
+            output="screen">
+        <param name="input_topic"
+               value="/fast_livo/unconverted_vision_pose" />
+        <param name="output_topic" value="/mavros/vision_pose/pose" />
+        <param name="expected_input_frame" value="camera_init" />
+        <param name="output_frame" value="map" />
+        <param name="warmup_samples" value="10" />
+        <param name="maximum_age_s" value="0.25" />
+      </node>
+    </group>
+  </group>
+
+  <node pkg="simple_target_follow"
+        type="sensor_monitor.py"
+        name="target_follow_sensor_monitor"
+        output="screen">
+    <param name="require_color" value="$(arg use_realsense)" />
+    <param name="require_depth"
+           value="$(eval arg('use_realsense') and arg('realsense_enable_depth'))" />
+    <param name="require_xsens_imu" value="$(arg use_xsens)" />
+    <param name="require_lidar" value="$(arg use_livox)" />
+    <param name="require_localization" value="$(arg use_fast_livo)" />
+  </node>
+</launch>

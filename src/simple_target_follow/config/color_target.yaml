@@ -1,0 +1,12 @@
+# OpenCV H: 0..179, S/V: 0..255. Initial blue range; tune on actual images.
+image_topic: /camera/color/image_raw
+hsv_lower: [95, 100, 60]
+hsv_upper: [130, 255, 255]
+minimum_area: 300.0
+maximum_area_fraction: 0.5
+minimum_fill_ratio: 0.5
+ambiguity_ratio: 0.65
+processing_rate: 10.0
+maximum_image_age: 0.4
+confirm_frames: 3
+maximum_center_jump: 0.15

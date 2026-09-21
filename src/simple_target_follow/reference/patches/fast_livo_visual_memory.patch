@@ -1,0 +1,36 @@
+diff --git a/src/vio.cpp b/src/vio.cpp
+--- a/src/vio.cpp
++++ b/src/vio.cpp
+@@ -250,7 +250,13 @@ void VIOManager::insertPointIntoVoxelMap(VisualPoint *pt_new)
+ 
+   auto iter = feat_map.find(position);
+   if (iter != feat_map.end())
+-  {//如果体素已存在，将新点添加到该体素的点列表中
++  {//如果体素已存在，将新点添加到该体素的点列表中
++    constexpr std::size_t kMaxVisualPointsPerVoxel = 10;
++    if (iter->second->voxel_points.size() >= kMaxVisualPointsPerVoxel)
++    {
++      delete pt_new;
++      return;
++    }
+     iter->second->voxel_points.push_back(pt_new);
+     iter->second->count++;
+   }
+@@ -991,8 +997,6 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
+     V2D pc(new_frame_->w2c(pt->pos_));
+     bool add_flag = false;
+     
+-    float *patch_temp = new float[patch_size_total];
+-    getImagePatch(img, pc, patch_temp, 0);//调用 getImagePatch 函数提取以 pc 为中心的图像补丁
+     // TODO: condition: distance and view_angle
+     // Step 1: time时间戳
+     Feature *last_feature = pt->obs_.back();
+@@ -1026,6 +1030,8 @@ void VIOManager::updateVisualMapPoints(cv::Mat img)
+       update_num += 1;
+       update_flag[i] = 1;
+       Vector3d f = cam->cam2world(pc);
++      float *patch_temp = new float[patch_size_total];
++      getImagePatch(img, pc, patch_temp, 0);
+       Feature *ftr_new = new Feature(pt, patch_temp, pc, f, new_frame_->T_f_w_, visual_submap->search_levels[i]);
+       ftr_new->img_ = img;
+       ftr_new->id_ = new_frame_->id_;

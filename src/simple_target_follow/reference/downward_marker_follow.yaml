@@ -1,0 +1,55 @@
+# Downward-looking RealSense tracking of the D-problem cross/ring target.
+takeoff_height: 1.50
+hover_duration: 3.0
+takeoff_speed: 0.30
+setpoint_rate: 20.0
+position_tolerance: 0.10
+settle_time: 1.5
+preflight_timeout: 60.0
+command_timeout: 30.0
+telemetry_max_age: 1.0
+state_max_age: 3.0
+pose_max_age: 0.5
+
+tracking_enabled: true
+tracking_duration: 30.0
+tracking_mode: follow
+follow_confirm_time: 1.0
+camera_orientation: downward
+# 0 degrees means image top points toward the vehicle nose and image right
+# points toward vehicle right. Set 90/-90/180 for a rotated camera mount.
+camera_yaw_offset_deg: 0.0
+desired_center_x: 0.50
+desired_center_y: 0.50
+
+image_topic: /camera/color/image_raw
+annotated_topic: /vehicle_marker/image
+marker_timeout: 0.60
+search_delay: 2.0
+# Rotating does not enlarge a downward camera's ground footprint. Keep zero
+# until a route-based or wireless coarse-search source is integrated.
+search_yaw_rate_deg: 0.0
+
+lateral_gain: 0.75
+longitudinal_gain: 0.75
+tracking_integral_gain: 0.30
+tracking_integral_limit: 0.40
+max_tracking_speed: 0.25
+align_yaw_to_motion: true
+maximum_tracking_yaw_rate_deg: 25.0
+max_tracking_radius: 3.5
+return_speed: 0.25
+
+# Size is reported for height/range monitoring but does not drive XY motion.
+desired_marker_size: 0.22
+minimum_marker_area: 120.0
+minimum_marker_size: 0.080
+maximum_marker_size: 0.70
+# The complete pattern is preferred, but the cross or either identifiable ring
+# can independently reacquire the target.
+marker_color: black
+marker_confirm_frames: 5
+marker_miss_tolerance_frames: 3
+marker_filter_alpha: 0.35
+maximum_center_jump: 0.18
+maximum_size_jump: 0.12

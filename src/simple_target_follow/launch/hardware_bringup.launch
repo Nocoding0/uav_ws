@@ -1,0 +1,30 @@
+<launch>
+  <!-- Safe companion-computer entry point. This launch only connects MAVROS;
+       it does not start the mission, change mode, arm, or drive actuators. -->
+  <arg name="fcu_url"
+       default="/dev/serial/by-id/usb-3D_Robotics_PX4_FMU_v5.x_0-if00:57600" />
+  <arg name="gcs_url" default="" />
+  <arg name="target_system" default="1" />
+  <arg name="target_component" default="1" />
+  <arg name="respawn_mavros" default="false" />
+  <arg name="use_health_monitor" default="true" />
+  <arg name="require_battery" default="false" />
+
+  <include file="$(find mavros)/launch/px4.launch">
+    <arg name="fcu_url" value="$(arg fcu_url)" />
+    <arg name="gcs_url" value="$(arg gcs_url)" />
+    <arg name="tgt_system" value="$(arg target_system)" />
+    <arg name="tgt_component" value="$(arg target_component)" />
+    <arg name="respawn_mavros" value="$(arg respawn_mavros)" />
+  </include>
+
+  <node if="$(arg use_health_monitor)"
+        pkg="simple_target_follow"
+        type="hardware_monitor.py"
+        name="target_follow_hardware_monitor"
+        output="screen">
+    <param name="require_battery" value="$(arg require_battery)" />
+    <param name="minimum_battery_voltage" value="21.0" />
+    <param name="minimum_battery_percentage" value="0.15" />
+  </node>
+</launch>
