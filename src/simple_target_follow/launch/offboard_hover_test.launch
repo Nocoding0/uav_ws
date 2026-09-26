@@ -1,0 +1,16 @@
+<launch>
+  <!-- Real-flight task node. Start the full lio_bringup separately first.
+       This launch does not start Livox, FAST-LIVO, MAVROS, or the pose bridge. -->
+  <arg name="config"
+       default="$(find simple_target_follow)/config/offboard_hover_test.yaml" />
+  <arg name="allow_arming" default="false" />
+
+  <node pkg="simple_target_follow"
+        type="offboard_hover_test.py"
+        name="offboard_hover_test"
+        output="screen"
+        required="true">
+    <rosparam command="load" file="$(arg config)" />
+    <param name="allow_arming" value="$(arg allow_arming)" />
+  </node>
+</launch>

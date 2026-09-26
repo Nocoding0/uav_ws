@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 import math
-from typing import Mapping, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Dict, Mapping, Optional, Sequence, Tuple
 
 
 MAV_STATE_NAMES = {
@@ -18,6 +19,117 @@ MAV_STATE_NAMES = {
     7: "POWEROFF",
     8: "FLIGHT_TERMINATION",
 }
+
+
+@dataclass(frozen=True)
+class HoverPreflightSnapshot:
+    """ROS-independent inputs for the guarded hover mission's readiness gate."""
+
+    state_present: bool
+    state_fresh: bool
+    connected: bool
+    armed: bool
+    mode: str
+    system_status: int
+    pose_present: bool
+    pose_fresh: bool
+    pose_xyz: Optional[Tuple[float, float, float]]
+    vision_fresh: bool
+    estimator_present: bool
+    estimator_fresh: bool
+    velocity_horiz_valid: bool
+    position_horiz_valid: bool
+    constant_position_mode: bool
+    bridge_fresh: bool
+    bridge_ready: bool
+    bridge_progress_fresh: bool
+    bridge_rejection_growth: int
+    battery_present: bool
+    battery_fresh: bool
+    battery_voltage: Optional[float]
+    battery_percentage: Optional[float]
+    pose_stable: bool
+
+
+def hover_preflight_checks(
+    snapshot: HoverPreflightSnapshot,
+    minimum_battery_voltage: float,
+    minimum_battery_percentage: float,
+) -> Dict[str, Optional[str]]:
+    """Return every readiness check used by the guarded hover mission."""
+
+    checks: Dict[str, Optional[str]] = {}
+    if not snapshot.state_present or not snapshot.state_fresh:
+        checks["fcu"] = "FCU state is missing or stale"
+    elif not snapshot.connected:
+        checks["fcu"] = "FCU is disconnected"
+    elif snapshot.armed:
+        checks["fcu"] = "FCU is already armed"
+    elif str(snapshot.mode).upper() == "OFFBOARD":
+        checks["fcu"] = "FCU is already in OFFBOARD mode"
+    else:
+        checks["fcu"] = fcu_system_status_reason(snapshot.system_status)
+
+    if not snapshot.pose_present or not snapshot.pose_fresh:
+        checks["px4_local_pose"] = "PX4 local pose is missing or stale"
+    elif snapshot.pose_xyz is None or not all(
+        math.isfinite(float(value)) for value in snapshot.pose_xyz
+    ):
+        checks["px4_local_pose"] = "PX4 local pose contains a non-finite position"
+    else:
+        checks["px4_local_pose"] = None
+
+    checks["external_vision"] = (
+        None if snapshot.vision_fresh else "external vision pose is missing or stale"
+    )
+
+    if not snapshot.estimator_present or not snapshot.estimator_fresh:
+        checks["px4_estimator"] = "PX4 estimator status is missing or stale"
+    elif not snapshot.velocity_horiz_valid:
+        checks["px4_estimator"] = "PX4 horizontal velocity is invalid"
+    elif not snapshot.position_horiz_valid:
+        checks["px4_estimator"] = "PX4 horizontal position is invalid"
+    elif snapshot.constant_position_mode:
+        checks["px4_estimator"] = "PX4 estimator is in constant-position mode"
+    else:
+        checks["px4_estimator"] = None
+
+    if not snapshot.bridge_fresh:
+        checks["localization_bridge"] = "localization bridge status is missing or stale"
+    elif not snapshot.bridge_ready:
+        checks["localization_bridge"] = "localization bridge is not ready"
+    elif not snapshot.bridge_progress_fresh:
+        checks["localization_bridge"] = "localization bridge output is not progressing"
+    elif snapshot.bridge_rejection_growth >= 2:
+        checks["localization_bridge"] = (
+            "localization bridge rejection count is continuously growing"
+        )
+    else:
+        checks["localization_bridge"] = None
+
+    if not snapshot.battery_present or not snapshot.battery_fresh:
+        checks["flight_battery"] = "flight battery telemetry is missing or stale"
+    else:
+        checks["flight_battery"] = battery_safety_reason(
+            snapshot.battery_voltage,
+            snapshot.battery_percentage,
+            True,
+            minimum_battery_voltage,
+            minimum_battery_percentage,
+        )
+
+    checks["stationary_pose"] = (
+        None
+        if snapshot.pose_stable
+        else "local pose has not remained stable for the required window"
+    )
+    return checks
+
+
+def first_failed_check(checks: Mapping[str, Optional[str]]) -> Optional[str]:
+    """Return the first failure from an ordered readiness-check mapping."""
+
+    return next((reason for reason in checks.values() if reason), None)
 
 
 def fcu_system_status_reason(system_status: int) -> Optional[str]:

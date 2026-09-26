@@ -14,6 +14,11 @@ Ubuntu 20.04 / ROS Noetic。
 
 当前阶段先验收机载定位和 PX4 融合，不启动视觉跟随。后续视觉实验可用棍子固定一块约 15–20 cm 的蓝色哑光板；目标检测使用 HSV 阈值和轮廓，不需要模型、CUDA、PyTorch 或额外 GPU。
 
+新增的 [OFFBOARD 定点试验](src/simple_target_follow/docs/OFFBOARD_HOVER_TEST.md)
+是独立的高风险飞行任务入口：在完整 LIO/MAVROS 位姿链完成验收后，需显式设置
+`allow_arming:=true` 并单独调用启动服务才会切模式和解锁。不要把它当作定位
+只读检查命令；正式飞行必须先拆桨验证、保留遥控人工接管，并记录 PX4 ULog。
+
 纯 LIO 的完整操作与分级验收命令见 [定位验收路线](src/simple_target_follow/docs/LOCALIZATION.md)。默认入口仅运行 Mid-360 + FAST-LIVO2，不启动飞行任务，也不发送位姿给飞控。
 
 ## 文件结构

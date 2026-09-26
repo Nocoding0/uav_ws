@@ -12,16 +12,50 @@ if PACKAGE_SRC not in sys.path:
     sys.path.insert(0, PACKAGE_SRC)
 
 from simple_target_follow.mission_safety import (
+    HoverPreflightSnapshot,
     battery_safety_reason,
+    first_failed_check,
     fcu_system_status_reason,
     flight_telemetry_reason,
     health_status_reason,
+    hover_preflight_checks,
     relative_geofence_reason,
     telemetry_is_fresh,
 )
 
 
 class MissionSafetyTest(unittest.TestCase):
+    @staticmethod
+    def healthy_hover_snapshot(**changes):
+        values = dict(
+            state_present=True,
+            state_fresh=True,
+            connected=True,
+            armed=False,
+            mode="POSCTL",
+            system_status=3,
+            pose_present=True,
+            pose_fresh=True,
+            pose_xyz=(0.0, 0.0, 0.0),
+            vision_fresh=True,
+            estimator_present=True,
+            estimator_fresh=True,
+            velocity_horiz_valid=True,
+            position_horiz_valid=True,
+            constant_position_mode=False,
+            bridge_fresh=True,
+            bridge_ready=True,
+            bridge_progress_fresh=True,
+            bridge_rejection_growth=0,
+            battery_present=True,
+            battery_fresh=True,
+            battery_voltage=24.0,
+            battery_percentage=0.5,
+            pose_stable=True,
+        )
+        values.update(changes)
+        return HoverPreflightSnapshot(**values)
+
     def test_telemetry_freshness_rejects_missing_future_and_stale_data(self):
         self.assertTrue(telemetry_is_fresh(9.8, 10.0, 0.5))
         self.assertFalse(telemetry_is_fresh(None, 10.0, 0.5))
@@ -113,6 +147,44 @@ class MissionSafetyTest(unittest.TestCase):
             "sensors",
         )
         self.assertIn("lidar stream is stale", reason)
+
+    def test_hover_preflight_accepts_only_complete_healthy_snapshot(self):
+        checks = hover_preflight_checks(
+            self.healthy_hover_snapshot(), 21.0, 0.15
+        )
+        self.assertTrue(all(reason is None for reason in checks.values()))
+        self.assertIsNone(first_failed_check(checks))
+
+    def test_hover_preflight_reports_multiple_actionable_failures(self):
+        checks = hover_preflight_checks(
+            self.healthy_hover_snapshot(
+                armed=True,
+                vision_fresh=False,
+                bridge_progress_fresh=False,
+                battery_voltage=20.0,
+                pose_stable=False,
+            ),
+            21.0,
+            0.15,
+        )
+        self.assertIn("already armed", checks["fcu"])
+        self.assertIn("external vision", checks["external_vision"])
+        self.assertIn("not progressing", checks["localization_bridge"])
+        self.assertIn("below", checks["flight_battery"])
+        self.assertIn("stable", checks["stationary_pose"])
+        self.assertEqual(first_failed_check(checks), checks["fcu"])
+
+    def test_hover_preflight_rejects_estimator_and_nonfinite_pose(self):
+        checks = hover_preflight_checks(
+            self.healthy_hover_snapshot(
+                pose_xyz=(math.nan, 0.0, 0.0),
+                position_horiz_valid=False,
+            ),
+            21.0,
+            0.15,
+        )
+        self.assertIn("non-finite", checks["px4_local_pose"])
+        self.assertIn("position is invalid", checks["px4_estimator"])
 
 
 if __name__ == "__main__":

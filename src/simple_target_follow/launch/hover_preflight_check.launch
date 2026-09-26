@@ -1,0 +1,15 @@
+<launch>
+  <!-- One-shot and read-only: never publishes setpoints, changes mode, or arms. -->
+  <arg name="config"
+       default="$(find simple_target_follow)/config/offboard_hover_test.yaml" />
+  <arg name="timeout" default="12.0" />
+
+  <node pkg="simple_target_follow"
+        type="hover_preflight_check.py"
+        name="hover_preflight_check"
+        output="screen"
+        required="true">
+    <rosparam command="load" file="$(arg config)" />
+    <param name="timeout" value="$(arg timeout)" />
+  </node>
+</launch>
