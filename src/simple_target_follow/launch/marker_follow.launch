@@ -1,0 +1,39 @@
+<launch>
+  <!-- Start lio_bringup.launch with MAVROS and pose bridge separately first.
+       This launch starts one camera and one guarded flight-control node. -->
+  <arg name="config" default="$(find simple_target_follow)/config/marker_follow.yaml" />
+  <arg name="allow_arming" default="false" />
+  <arg name="tracking_geometry_validated" default="false" />
+  <arg name="camera_orientation" default="forward" />
+  <arg name="start_camera" default="true" />
+  <arg name="realsense_serial" default="918512073667" />
+
+  <include if="$(arg start_camera)"
+           file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <arg name="serial_no" value="$(arg realsense_serial)" />
+    <arg name="enable_color" value="true" />
+    <arg name="color_width" value="640" />
+    <arg name="color_height" value="480" />
+    <arg name="color_fps" value="30" />
+    <arg name="enable_depth" value="false" />
+    <arg name="enable_infra1" value="false" />
+    <arg name="enable_infra2" value="false" />
+    <arg name="enable_accel" value="false" />
+    <arg name="enable_gyro" value="false" />
+    <arg name="enable_pointcloud" value="false" />
+  </include>
+
+  <node pkg="simple_target_follow" type="offboard_hover_test.py"
+        name="offboard_marker_follow" output="screen" required="true">
+    <rosparam command="load" file="$(find simple_target_follow)/config/offboard_hover_test.yaml" />
+    <rosparam command="load" file="$(arg config)" />
+    <param name="tracking_enabled" value="true" />
+    <param name="allow_arming" value="$(arg allow_arming)" />
+    <param name="tracking_geometry_validated" value="$(arg tracking_geometry_validated)" />
+    <param name="camera_orientation" value="$(arg camera_orientation)" />
+    <param name="status_topic" value="/target_follow/marker_follow/status" />
+    <param name="marker_status_topic" value="/target_follow/marker_follow/marker" />
+    <param name="start_service" value="/target_follow/marker_follow/start" />
+    <param name="abort_service" value="/target_follow/marker_follow/abort" />
+  </node>
+</launch>

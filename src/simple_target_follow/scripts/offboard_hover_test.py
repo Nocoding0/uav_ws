@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import copy
+import cv2
 import json
 import math
+import threading
 from collections import deque
 from typing import Deque, Dict, Optional, Tuple
 
@@ -34,6 +36,8 @@ from simple_target_follow.mission_safety import (
     hover_preflight_checks,
     telemetry_is_fresh,
 )
+from simple_target_follow.marker_detection import detect_concentric_marker
+from simple_target_follow.marker_follow import MarkerLock, follow_setpoint
 
 
 class MissionAbort(RuntimeError):
@@ -152,8 +156,17 @@ class OffboardHoverTest:
         self.setpoint_pub = rospy.Publisher(
             "/mavros/setpoint_position/local", PoseStamped, queue_size=10
         )
+        self.status_topic = rospy.get_param(
+            "~status_topic", "/target_follow/hover_test/status"
+        )
+        self.start_service_name = rospy.get_param(
+            "~start_service", "/target_follow/hover_test/start"
+        )
+        self.abort_service_name = rospy.get_param(
+            "~abort_service", "/target_follow/hover_test/abort"
+        )
         self.status_pub = rospy.Publisher(
-            "/target_follow/hover_test/status", String, queue_size=2, latch=True
+            self.status_topic, String, queue_size=2, latch=True
         )
         rospy.Subscriber("/mavros/state", State, self._state_callback)
         rospy.Subscriber(
@@ -175,10 +188,10 @@ class OffboardHoverTest:
             self._bridge_callback,
         )
         self.start_service = rospy.Service(
-            "/target_follow/hover_test/start", Trigger, self._start_callback
+            self.start_service_name, Trigger, self._start_callback
         )
         self.abort_service = rospy.Service(
-            "/target_follow/hover_test/abort", Trigger, self._abort_callback
+            self.abort_service_name, Trigger, self._abort_callback
         )
         self.status_timer = rospy.Timer(rospy.Duration(0.2), self._status_timer)
         self.arm_service = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)
@@ -261,6 +274,8 @@ class OffboardHoverTest:
             MissionPhase.ENTERING_OFFBOARD,
             MissionPhase.TAKEOFF,
             MissionPhase.HOVER,
+            MissionPhase.TRACKING,
+            MissionPhase.RETURNING,
         ):
             return TriggerResponse(False, "mission is not controlling the vehicle")
         self.abort_requested = True
@@ -442,7 +457,7 @@ class OffboardHoverTest:
         reason = self._preflight_reason()
         if reason is None:
             self.phase = MissionPhase.READY
-            self.detail = "ready; call /target_follow/hover_test/start"
+            self.detail = "ready; call {}".format(self.start_service_name)
         else:
             self.phase = MissionPhase.WAITING
             self.detail = reason
@@ -692,7 +707,8 @@ class OffboardHoverTest:
             self._takeoff(start_z, target_z)
             self.target.pose.position.z = target_z
             self._hover()
-            if not self._request_land("hover complete; AUTO.LAND requested"):
+            if not self._request_land(getattr(
+                    self, "landing_detail", "hover complete; AUTO.LAND requested")):
                 if self.phase == MissionPhase.PILOT_TAKEOVER:
                     rospy.logwarn("Pilot/PX4 took over during landing: %s", self.detail)
                 else:
@@ -723,10 +739,238 @@ class OffboardHoverTest:
                 rospy.spin()
 
 
+class OffboardMarkerFollow(OffboardHoverTest):
+    """Use the 22 September LIO flight gates with the cross-and-rings detector."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        from cv_bridge import CvBridge, CvBridgeError
+        from sensor_msgs.msg import Image
+
+        self.cv_bridge = CvBridge()
+        self.cv_bridge_error = CvBridgeError
+        self.tracking_geometry_validated = bool(
+            rospy.get_param("~tracking_geometry_validated", False)
+        )
+        self.camera_orientation = str(rospy.get_param("~camera_orientation", "forward"))
+        self.camera_yaw_offset = math.radians(float(
+            rospy.get_param("~camera_yaw_offset_deg", 0.0)))
+        self.marker_color = str(rospy.get_param("~marker_color", "black"))
+        self.marker_minimum_area = float(rospy.get_param("~minimum_marker_area", 120.0))
+        self.marker_minimum_size = float(rospy.get_param("~minimum_marker_size", 0.045))
+        self.marker_maximum_size = float(rospy.get_param("~maximum_marker_size", 0.70))
+        self.marker_timeout = float(rospy.get_param("~marker_timeout", 0.5))
+        self.marker_lock = MarkerLock(
+            int(rospy.get_param("~marker_confirm_frames", 5)),
+            self.marker_timeout,
+            float(rospy.get_param("~maximum_center_jump", 0.18)),
+            float(rospy.get_param("~maximum_size_jump", 0.12)),
+            float(rospy.get_param("~marker_filter_alpha", 0.35)),
+        )
+        self.tracking_duration = float(rospy.get_param("~tracking_duration", 30.0))
+        self.acquisition_timeout = float(rospy.get_param("~marker_acquisition_timeout", 15.0))
+        self.loss_timeout = float(rospy.get_param("~marker_loss_timeout", 3.0))
+        self.desired_center = (
+            float(rospy.get_param("~desired_center_x", 0.5)),
+            float(rospy.get_param("~desired_center_y", 0.5)),
+        )
+        self.desired_size = float(rospy.get_param("~desired_marker_size", 0.22))
+        self.forward_gain = float(rospy.get_param("~forward_gain", 0.75))
+        self.lateral_gain = float(rospy.get_param("~lateral_gain", 0.75))
+        self.max_tracking_speed = float(rospy.get_param("~max_tracking_speed", 0.20))
+        self.max_tracking_radius = float(rospy.get_param("~max_tracking_radius", 2.0))
+        self.max_follow_error = float(rospy.get_param("~max_follow_error", 0.8))
+        self.return_speed = float(rospy.get_param("~return_speed", 0.20))
+        self.return_timeout = float(rospy.get_param("~return_timeout", 35.0))
+        self.image_at: Optional[float] = None
+        self.marker_mutex = threading.Lock()
+        self.last_seen: Optional[float] = None
+        self.home_xy: Optional[Tuple[float, float]] = None
+        self.marker_status_pub = rospy.Publisher(
+            rospy.get_param("~marker_status_topic", "/target_follow/marker_follow/marker"),
+            String, queue_size=2, latch=True)
+        self.annotated_pub = rospy.Publisher(
+            rospy.get_param("~annotated_topic", "/target_follow/marker_follow/image"),
+            Image, queue_size=1)
+        rospy.Subscriber(rospy.get_param("~image_topic", "/camera/color/image_raw"),
+                         Image, self._image_callback, queue_size=1, buff_size=2 ** 24)
+        numeric = (self.camera_yaw_offset, self.marker_minimum_area,
+                   self.marker_minimum_size, self.marker_maximum_size,
+                   self.tracking_duration, self.acquisition_timeout,
+                   self.loss_timeout, self.desired_size, *self.desired_center,
+                   self.forward_gain, self.lateral_gain, self.max_tracking_speed,
+                   self.max_tracking_radius, self.max_follow_error,
+                   self.return_speed, self.return_timeout)
+        if (self.camera_orientation not in ("downward", "forward")
+                or self.marker_color not in ("black", "blue")
+                or not all(math.isfinite(v) for v in numeric)
+                or min(numeric[1:]) <= 0
+                or self.marker_minimum_size >= self.marker_maximum_size
+                or self.marker_maximum_size > 1
+                or not all(0 < v < 1 for v in self.desired_center)
+                or not 0 < self.desired_size < 1):
+            raise ValueError("invalid marker-follow configuration")
+
+    def _preflight_reason(self) -> Optional[str]:
+        reason = super()._preflight_reason()
+        if reason:
+            return reason
+        if not getattr(self, "tracking_geometry_validated", False):
+            return "camera and LiDAR mounting geometry has not been validated"
+        image_at = getattr(self, "image_at", None)
+        if not telemetry_is_fresh(image_at, self._now(),
+                                  getattr(self, "marker_timeout", 0.5)):
+            return "camera image is missing or stale"
+        return None
+
+    def _image_callback(self, message) -> None:
+        stamp = message.header.stamp.to_sec()
+        now = self._now()
+        if stamp <= 0 or stamp > now + 0.1 or now - stamp > self.marker_timeout:
+            return
+        try:
+            image = self.cv_bridge.imgmsg_to_cv2(message, "bgr8")
+            detection = detect_concentric_marker(
+                image, self.marker_minimum_area, self.marker_color,
+                minimum_normalized_size=self.marker_minimum_size,
+                maximum_normalized_size=self.marker_maximum_size)
+            self.image_at = now
+        except (self.cv_bridge_error, cv2.error, ValueError) as exc:
+            rospy.logwarn_throttle(2.0, "Marker image processing failed: %s", exc)
+            detection = None
+            image = None
+        observed = None
+        if detection is not None:
+            x, y, size, ellipses, cross_lines = detection
+            observed = (x, y, size, bool(ellipses and cross_lines))
+        with self.marker_mutex:
+            self.marker_lock.observe(observed, stamp, now)
+            locked = self.marker_lock.current(now)
+        self.marker_status_pub.publish(String(data=json.dumps({
+            "stamp": stamp, "detected": detection is not None,
+            "complete_pattern": bool(observed and observed[3]),
+            "confirmed": locked is not None,
+            "center": None if locked is None else [locked.x, locked.y],
+            "size": None if locked is None else locked.size,
+        }, sort_keys=True)))
+        if image is not None and self.annotated_pub.get_num_connections():
+            if detection is not None:
+                for ellipse in ellipses:
+                    cv2.ellipse(image, ellipse, (0, 255, 0), 2)
+                for line in cross_lines:
+                    cv2.line(image, tuple(map(int, line[:2])),
+                             tuple(map(int, line[2:])), (255, 0, 0), 2)
+            output = self.cv_bridge.cv2_to_imgmsg(image, "bgr8")
+            output.header = message.header
+            self.annotated_pub.publish(output)
+
+    def _checked_follow_error(self) -> None:
+        errors = self._errors()
+        if errors is None:
+            raise MissionAbort("follow position error is unavailable")
+        if errors[0] > self.max_follow_error:
+            raise MissionAbort("horizontal follow error exceeded limit")
+        if abs(errors[1]) > self.limits.maximum_hover_vertical_error:
+            raise MissionAbort("vertical follow error exceeded limit")
+
+    def _hover(self) -> None:
+        super()._hover()
+        assert self.target is not None
+        self.landing_detail = "marker follow and return complete; AUTO.LAND requested"
+        self.home_xy = (self.target.pose.position.x, self.target.pose.position.y)
+        self._track_marker()
+        self._return_home()
+
+    def _track_marker(self) -> None:
+        assert self.target is not None and self.home_xy is not None
+        self.phase = MissionPhase.TRACKING
+        self.detail = "holding until marker lock, then following"
+        started = self._now()
+        previous = started
+        yaw_q = self.target.pose.orientation
+        yaw = math.atan2(2 * (yaw_q.w * yaw_q.z + yaw_q.x * yaw_q.y),
+                         1 - 2 * (yaw_q.y ** 2 + yaw_q.z ** 2))
+        while not rospy.is_shutdown() and self._now() - started < self.tracking_duration:
+            self._check_active()
+            self._checked_follow_error()
+            now = self._now()
+            with self.marker_mutex:
+                marker = self.marker_lock.current(now)
+            if marker is not None:
+                self.last_seen = now
+                dt = min(0.1, max(0.0, now - previous))
+                if dt > 0:
+                    x, y = follow_setpoint(
+                        (self.target.pose.position.x, self.target.pose.position.y),
+                        self.home_xy, yaw, marker,
+                        orientation=self.camera_orientation,
+                        camera_yaw_offset=self.camera_yaw_offset,
+                        desired_center=self.desired_center,
+                        desired_size=self.desired_size,
+                        forward_gain=self.forward_gain,
+                        lateral_gain=self.lateral_gain,
+                        max_speed=self.max_tracking_speed,
+                        max_radius=self.max_tracking_radius, dt=dt)
+                    self.target.pose.position.x = x
+                    self.target.pose.position.y = y
+                self.detail = "following confirmed marker"
+            elif self.last_seen is None and now - started >= self.acquisition_timeout:
+                self.detail = "marker not acquired; returning to takeoff point"
+                break
+            elif self.last_seen is not None and now - self.last_seen >= self.loss_timeout:
+                self.detail = "marker lost; returning to takeoff point"
+                break
+            else:
+                self.detail = "marker unavailable; holding position"
+            previous = now
+            self._publish_target()
+            self.rate.sleep()
+        if rospy.is_shutdown():
+            raise MissionAbort("ROS shut down while tracking")
+
+    def _return_home(self) -> None:
+        assert self.target is not None and self.home_xy is not None
+        self.phase = MissionPhase.RETURNING
+        self.detail = "returning to takeoff hover point"
+        deadline = self._now() + self.return_timeout
+        previous = self._now()
+        stable_since: Optional[float] = None
+        while not rospy.is_shutdown() and self._now() < deadline:
+            self._check_active()
+            self._checked_follow_error()
+            now = self._now()
+            dt = min(0.1, max(0.0, now - previous))
+            previous = now
+            point = self.target.pose.position
+            dx = self.home_xy[0] - point.x
+            dy = self.home_xy[1] - point.y
+            distance = math.hypot(dx, dy)
+            if distance > 0:
+                step = min(distance, self.return_speed * dt)
+                point.x += dx / distance * step
+                point.y += dy / distance * step
+            self._publish_target()
+            assert self.pose is not None
+            actual = self.pose.pose.position
+            actual_error = math.hypot(actual.x - self.home_xy[0],
+                                      actual.y - self.home_xy[1])
+            if distance <= self.limits.position_tolerance and actual_error <= self.limits.position_tolerance:
+                if stable_since is None:
+                    stable_since = now
+                elif now - stable_since >= self.limits.settle_time:
+                    return
+            else:
+                stable_since = None
+            self.rate.sleep()
+        raise MissionAbort("return to takeoff hover point did not settle")
+
+
 def main() -> None:
     rospy.init_node("offboard_hover_test")
     try:
-        OffboardHoverTest().run()
+        mission = (OffboardMarkerFollow() if rospy.get_param("~tracking_enabled", False)
+                   else OffboardHoverTest())
+        mission.run()
     except ValueError as exc:
         rospy.logfatal("Invalid hover-test configuration: %s", exc)
         raise SystemExit(2)

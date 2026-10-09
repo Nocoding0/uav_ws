@@ -15,6 +15,8 @@ class MissionPhase:
     ENTERING_OFFBOARD = "ENTERING_OFFBOARD"
     TAKEOFF = "TAKEOFF"
     HOVER = "HOVER"
+    TRACKING = "TRACKING"
+    RETURNING = "RETURNING"
     LANDING = "LANDING"
     COMPLETE = "COMPLETE"
     ABORTED = "ABORTED"
@@ -25,6 +27,8 @@ ACTIVE_PHASES = {
     MissionPhase.ENTERING_OFFBOARD,
     MissionPhase.TAKEOFF,
     MissionPhase.HOVER,
+    MissionPhase.TRACKING,
+    MissionPhase.RETURNING,
 }
 
 

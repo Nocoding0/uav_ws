@@ -66,6 +66,12 @@ NODE = load_flight_node()
 
 
 class OffboardHoverNodeTest(unittest.TestCase):
+    def test_marker_follow_stays_unready_until_geometry_is_validated(self):
+        node = NODE.OffboardMarkerFollow.__new__(NODE.OffboardMarkerFollow)
+        node.tracking_geometry_validated = False
+        with mock.patch.object(NODE.OffboardHoverTest, "_preflight_reason", return_value=None):
+            self.assertIn("mounting geometry", node._preflight_reason())
+
     def test_explicit_start_requires_ready_and_allow_arming(self):
         node = NODE.OffboardHoverTest.__new__(NODE.OffboardHoverTest)
         node.phase = NODE.MissionPhase.WAITING

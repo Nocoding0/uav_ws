@@ -1,0 +1,29 @@
+# Uses the 22 September guarded LIO takeoff profile, then follows the
+# double-ring-and-cross marker with a separate camera stream.
+hover_duration: 3.0
+tracking_duration: 30.0
+camera_orientation: forward
+camera_yaw_offset_deg: 0.0
+image_topic: /camera/color/image_raw
+marker_color: black
+minimum_marker_area: 120.0
+minimum_marker_size: 0.045
+maximum_marker_size: 0.70
+marker_confirm_frames: 5
+marker_filter_alpha: 0.35
+marker_timeout: 0.5
+maximum_center_jump: 0.18
+maximum_size_jump: 0.12
+marker_acquisition_timeout: 15.0
+marker_loss_timeout: 3.0
+desired_center_x: 0.5
+desired_center_y: 0.5
+# Initial image-width ratio. Calibrate against the desired stand-off distance.
+desired_marker_size: 0.22
+forward_gain: 0.75
+lateral_gain: 0.75
+max_tracking_speed: 0.20
+max_tracking_radius: 2.0
+max_follow_error: 0.8
+return_speed: 0.20
+return_timeout: 35.0
