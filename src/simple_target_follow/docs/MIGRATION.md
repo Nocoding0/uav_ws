@@ -6,7 +6,9 @@
 
 自动替换：Python/ROS 包名为 `simple_target_follow`，健康状态前缀为 `/target_follow/`，launch/config 使用标准目录。相机、MAVROS、Livox、FAST-LIVO 外部话题保持原有接口。
 
-原飞行控制器和标记检测器仅保存在 `reference/`，未安装，没有新 launch 启动它们；它们仍包含赛题流程，尚未改成色块控制。原 FAST-LIVO 补丁也仅存档，没有重新应用。
+原始飞行控制器、标记检测器及旧参数保存在 `reference/`，不安装，也没有当前 launch 启动它们。当前 OFFBOARD 生命周期和追踪任务位于独立的 `offboard_mission.py`、`marker_mission.py` 模块；当前 `marker_detection.py` 从历史检测器发展而来。原 FAST-LIVO 补丁仅存档，本迁移未重新应用。
+
+下表的 SHA256 记录迁移时的原始文件，用于溯源，不代表当前文件内容。后续模块关系和入口见 [代码架构](ARCHITECTURE.md)。
 
 |来源相对路径|新路径|原文件 SHA256|
 |---|---|---|

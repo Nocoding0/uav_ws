@@ -9,18 +9,8 @@
   <arg name="realsense_serial" default="918512073667" />
 
   <include if="$(arg start_camera)"
-           file="$(find realsense2_camera)/launch/rs_camera.launch">
-    <arg name="serial_no" value="$(arg realsense_serial)" />
-    <arg name="enable_color" value="true" />
-    <arg name="color_width" value="640" />
-    <arg name="color_height" value="480" />
-    <arg name="color_fps" value="30" />
-    <arg name="enable_depth" value="false" />
-    <arg name="enable_infra1" value="false" />
-    <arg name="enable_infra2" value="false" />
-    <arg name="enable_accel" value="false" />
-    <arg name="enable_gyro" value="false" />
-    <arg name="enable_pointcloud" value="false" />
+           file="$(find simple_target_follow)/launch/includes/color_camera.launch">
+    <arg name="realsense_serial" value="$(arg realsense_serial)" />
   </include>
 
   <node pkg="simple_target_follow" type="offboard_hover_test.py"

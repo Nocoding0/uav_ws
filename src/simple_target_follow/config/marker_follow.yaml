@@ -5,6 +5,8 @@ tracking_duration: 30.0
 camera_orientation: forward
 camera_yaw_offset_deg: 0.0
 image_topic: /camera/color/image_raw
+# Each node start creates a new JSONL file here; camera frames are not stored.
+log_dir: ~/.ros/marker_follow_logs
 marker_color: black
 minimum_marker_area: 120.0
 minimum_marker_size: 0.045

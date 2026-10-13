@@ -5,6 +5,10 @@
 目标高度是进入 OFFBOARD、解锁后采集的 PX4 local Z 加 1.2 m，XY 和 yaw 固定在
 当时位置。达到目标并稳定 1.5 秒后才开始计时 40 秒。
 
+ROS 入口保持 `scripts/offboard_hover_test.py`，公共飞行流程位于
+`src/simple_target_follow/offboard_mission.py`。追踪任务复用同一套起飞、接管与降落流程；
+模块职责见 [代码架构](ARCHITECTURE.md)。
+
 ## 飞行前
 
 1. 在拆桨状态先验证完整链、遥控切出 OFFBOARD 的人工接管和定位停止时的 PX4
@@ -55,7 +59,7 @@ roslaunch simple_target_follow offboard_hover_test.launch allow_arming:=true
 再从第三个已 source 的终端手动发出一次启动请求：
 
 ```bash
-rostopic echo /target_follow/hover_test/status
+rostopic echo -n 1 /target_follow/hover_test/status
 rosservice call /target_follow/hover_test/start
 ```
 

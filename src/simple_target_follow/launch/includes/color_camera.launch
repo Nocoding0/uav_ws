@@ -1,0 +1,21 @@
+<launch>
+  <!-- Shared RGB-only profile for marker tracking and color preview. -->
+  <arg name="realsense_serial" default="918512073667" />
+  <arg name="color_width" default="640" />
+  <arg name="color_height" default="480" />
+  <arg name="color_fps" default="30" />
+
+  <include file="$(find realsense2_camera)/launch/rs_camera.launch">
+    <arg name="serial_no" value="$(arg realsense_serial)" />
+    <arg name="enable_color" value="true" />
+    <arg name="color_width" value="$(arg color_width)" />
+    <arg name="color_height" value="$(arg color_height)" />
+    <arg name="color_fps" value="$(arg color_fps)" />
+    <arg name="enable_depth" value="false" />
+    <arg name="enable_infra1" value="false" />
+    <arg name="enable_infra2" value="false" />
+    <arg name="enable_accel" value="false" />
+    <arg name="enable_gyro" value="false" />
+    <arg name="enable_pointcloud" value="false" />
+  </include>
+</launch>

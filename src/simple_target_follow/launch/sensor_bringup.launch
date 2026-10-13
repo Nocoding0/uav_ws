@@ -1,5 +1,7 @@
 <launch>
-  <!-- Sensor-only bring-up. It does not start MAVROS or the flight mission. -->
+  <!-- Legacy multi-sensor entry, retained for compatibility and diagnostics.
+       Current flight tasks use lio_bringup.launch and marker_follow.launch.
+       This entry does not start MAVROS or the flight mission. -->
   <arg name="use_realsense" default="true" />
   <arg name="realsense_serial" default="918512073667" />
   <arg name="realsense_enable_depth" default="true" />
